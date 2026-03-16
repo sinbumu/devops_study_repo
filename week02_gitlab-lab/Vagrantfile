@@ -1,0 +1,93 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  # 공통
+  config.vm.box = "cloud-image/ubuntu-24.04"
+  config.vm.boot_timeout = 3600
+
+  # ----------------------------
+  # 1) GitLab Server VM
+  # ----------------------------
+  config.vm.define "gitlab" do |cfg|
+    cfg.vm.hostname = "gitlab.local"
+
+    cfg.vm.network "forwarded_port", guest: 80, host: 8080
+    cfg.vm.network "forwarded_port", guest: 22, host: 8022
+    cfg.vm.network "private_network", ip: "192.168.33.44"
+
+    cfg.vm.synced_folder ".", "/vagrant", type: "rsync", rsync__exclude: [".git/"]
+
+    cfg.vm.provider "virtualbox" do |vb|
+      vb.name = "gitlab.local"
+      vb.cpus = 2
+      vb.memory = "4096"
+    end
+
+    cfg.vm.provision "shell", inline: <<-SHELL
+      sudo apt-get update
+      sudo apt-get install -y curl wget openssh-server ca-certificates
+
+      debconf-set-selections <<< "postfix postfix/mailname string $HOSTNAME"
+      debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
+      DEBIAN_FRONTEND=noninteractive sudo apt-get install -y postfix
+
+      if [ ! -e /vagrant/gitlab-ce_18.7.5-ce.0_amd64.deb ]; then
+        wget --content-disposition -O /vagrant/gitlab-ce_18.7.5-ce.0_amd64.deb \
+          https://packages.gitlab.com/gitlab/gitlab-ce/packages/ubuntu/noble/gitlab-ce_18.7.5-ce.0_amd64.deb/download.deb
+      fi
+
+      sudo dpkg -i /vagrant/gitlab-ce_18.7.5-ce.0_amd64.deb || sudo apt-get install -f -y
+      sudo gitlab-ctl reconfigure
+    SHELL
+  end
+
+  # ----------------------------
+  # 2) GitLab Runner VM
+  # ----------------------------
+  config.vm.define "runner" do |cfg|
+    cfg.vm.hostname = "runner.local"
+
+    cfg.vm.network "forwarded_port", guest: 22, host: 8023
+    cfg.vm.network "private_network", ip: "192.168.33.45"
+
+    cfg.vm.synced_folder ".", "/vagrant", type: "rsync", rsync__exclude: [".git/"]
+
+    cfg.vm.provider "virtualbox" do |vb|
+      vb.name = "runner.local"
+      vb.cpus = 2
+      vb.memory = "2048"
+    end
+
+    cfg.vm.provision "shell", inline: <<-SHELL
+      sudo apt-get update
+      sudo apt-get install -y curl wget ca-certificates
+
+      # GitLab Runner binary 설치
+      sudo curl -L --output /usr/local/bin/gitlab-runner \
+        https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64
+
+      sudo chmod +x /usr/local/bin/gitlab-runner
+
+      # gitlab-runner 사용자 생성
+      if ! id -u gitlab-runner >/dev/null 2>&1; then
+        sudo useradd --comment 'GitLab Runner' --create-home gitlab-runner --shell /bin/bash
+      fi
+
+      # 서비스 등록 및 시작
+      sudo gitlab-runner install --user=gitlab-runner --working-directory=/home/gitlab-runner
+      sudo gitlab-runner start
+
+      echo "Runner 설치 완료"
+      echo "이후 registration token을 넣어 수동 등록:"
+      echo "sudo gitlab-runner register --non-interactive \\"
+      echo "  --url http://192.168.33.44/ \\"
+      echo "  --registration-token <YOUR_TOKEN> \\"
+      echo "  --executor shell \\"
+      echo "  --description runner-local \\"
+      echo "  --tag-list local,shell \\"
+      echo "  --run-untagged=true \\"
+      echo "  --locked=false"
+    SHELL
+  end
+end
