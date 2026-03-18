@@ -26,19 +26,21 @@ Vagrant.configure("2") do |config|
 
     cfg.vm.provision "shell", inline: <<-SHELL
       sudo apt-get update
-      sudo apt-get install -y curl wget openssh-server ca-certificates
+      sudo apt-get install -y curl wget ca-certificates
 
-      debconf-set-selections <<< "postfix postfix/mailname string $HOSTNAME"
-      debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
-      DEBIAN_FRONTEND=noninteractive sudo apt-get install -y postfix
+      sudo curl -L --output /usr/local/bin/gitlab-runner \
+        https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64
 
-      if [ ! -e /vagrant/gitlab-ce_18.7.5-ce.0_amd64.deb ]; then
-        wget --content-disposition -O /vagrant/gitlab-ce_18.7.5-ce.0_amd64.deb \
-          https://packages.gitlab.com/gitlab/gitlab-ce/packages/ubuntu/noble/gitlab-ce_18.7.5-ce.0_amd64.deb/download.deb
+      sudo chmod +x /usr/local/bin/gitlab-runner
+
+      if ! id -u gitlab-runner >/dev/null 2>&1; then
+        sudo useradd --comment 'GitLab Runner' --create-home gitlab-runner --shell /bin/bash
       fi
 
-      sudo dpkg -i /vagrant/gitlab-ce_18.7.5-ce.0_amd64.deb || sudo apt-get install -f -y
-      sudo gitlab-ctl reconfigure
+      sudo gitlab-runner install --user=gitlab-runner --working-directory=/home/gitlab-runner || true
+      sudo gitlab-runner start || true
+
+      echo "Runner installation completed."
     SHELL
   end
 
@@ -79,15 +81,6 @@ Vagrant.configure("2") do |config|
       sudo gitlab-runner start
 
       echo "Runner 설치 완료"
-      echo "이후 registration token을 넣어 수동 등록:"
-      echo "sudo gitlab-runner register --non-interactive \\"
-      echo "  --url http://192.168.33.44/ \\"
-      echo "  --registration-token <YOUR_TOKEN> \\"
-      echo "  --executor shell \\"
-      echo "  --description runner-local \\"
-      echo "  --tag-list local,shell \\"
-      echo "  --run-untagged=true \\"
-      echo "  --locked=false"
     SHELL
   end
 end
