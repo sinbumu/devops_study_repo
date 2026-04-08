@@ -1,0 +1,29 @@
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.hostname = "week05-docker"
+  config.vm.boot_timeout = 3600
+
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 2048
+    vb.cpus = 2
+    vb.name = "week05-docker.local"
+  end
+
+  if Vagrant.has_plugin?("vagrant-vbguest")
+    config.vbguest.auto_update = false
+  end
+
+  config.vm.network "private_network", ip: "192.168.33.48"
+  # Windows + VirtualBox에서는 기본 shared folder가 rsync보다 안정적입니다.
+  config.vm.synced_folder ".", "/vagrant"
+
+  config.vm.provision "shell", inline: <<-SHELL
+    export DEBIAN_FRONTEND=noninteractive
+    sudo apt -y update
+    sudo apt install -y software-properties-common git curl ca-certificates gnupg lsb-release
+    sudo add-apt-repository --yes --update ppa:ansible/ansible
+    sudo apt install -y ansible
+  SHELL
+end
