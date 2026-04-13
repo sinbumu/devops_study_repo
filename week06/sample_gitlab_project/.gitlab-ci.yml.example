@@ -1,0 +1,9 @@
+stages:
+  - setup
+
+ansible-run:
+  stage: setup
+  tags:
+    - shell
+  script:
+    - ansible-playbook -i development site.yml
