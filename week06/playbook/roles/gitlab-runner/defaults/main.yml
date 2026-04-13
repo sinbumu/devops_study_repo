@@ -1,0 +1,9 @@
+---
+gitlab_runner_register_shell: true
+gitlab_runner_register_docker: true
+gitlab_runner_enable_passwordless_sudo: false
+gitlab_runner_shell_tag: shell
+gitlab_runner_docker_tag: docker
+gitlab_runner_docker_image: docker:stable
+gitlab_runner_run_untagged_shell: false
+gitlab_runner_run_untagged_docker: true
