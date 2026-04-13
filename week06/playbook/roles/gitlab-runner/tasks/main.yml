@@ -1,0 +1,84 @@
+---
+- name: install helper packages for GitLab Runner
+  apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+
+- name: download GitLab Runner repository setup script
+  get_url:
+    url: https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh
+    dest: /tmp/gitlab-runner.deb.sh
+    mode: '0744'
+
+- name: install GitLab Runner repository
+  command: bash /tmp/gitlab-runner.deb.sh
+  args:
+    creates: /etc/apt/sources.list.d/runner_gitlab-runner.list
+
+- name: install gitlab-runner package
+  apt:
+    name: gitlab-runner
+    state: present
+    update_cache: yes
+
+- name: add gitlab-runner to docker group
+  user:
+    name: gitlab-runner
+    groups: docker
+    append: yes
+
+- name: optionally allow passwordless sudo for gitlab-runner
+  copy:
+    dest: /etc/sudoers.d/gitlab-runner
+    content: "gitlab-runner ALL=(ALL) NOPASSWD: ALL\n"
+    mode: '0440'
+  when: gitlab_runner_enable_passwordless_sudo | bool
+
+- name: register shell runner to GitLab when missing
+  shell: |
+    if ! grep -q 'name = "Shell Runner"' /etc/gitlab-runner/config.toml 2>/dev/null; then
+      gitlab-runner register \
+        --non-interactive \
+        --url "{{ gitlab_url }}" \
+        --registration-token "{{ gitlab_runner_token }}" \
+        --description "Shell Runner" \
+        --executor "shell" \
+        --tag-list "{{ gitlab_runner_shell_tag }}" \
+        --run-untagged="{{ 'true' if gitlab_runner_run_untagged_shell else 'false' }}" \
+        --locked="false" \
+        --access-level="not_protected"
+    fi
+  args:
+    executable: /bin/bash
+  when:
+    - gitlab_url is defined
+    - gitlab_runner_token is defined
+    - gitlab_runner_register_shell | bool
+
+- name: register docker runner to GitLab when missing
+  shell: |
+    if ! grep -q 'name = "Docker Runner"' /etc/gitlab-runner/config.toml 2>/dev/null; then
+      gitlab-runner register \
+        --non-interactive \
+        --url "{{ gitlab_url }}" \
+        --registration-token "{{ gitlab_runner_token }}" \
+        --description "Docker Runner" \
+        --executor "docker" \
+        --docker-image "{{ gitlab_runner_docker_image }}" \
+        --docker-privileged \
+        --tag-list "{{ gitlab_runner_docker_tag }}" \
+        --run-untagged="{{ 'true' if gitlab_runner_run_untagged_docker else 'false' }}" \
+        --locked="false" \
+        --access-level="not_protected"
+    fi
+  args:
+    executable: /bin/bash
+  when:
+    - gitlab_url is defined
+    - gitlab_runner_token is defined
+    - gitlab_runner_register_docker | bool
